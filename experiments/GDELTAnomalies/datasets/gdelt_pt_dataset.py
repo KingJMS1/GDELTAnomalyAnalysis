@@ -1,11 +1,13 @@
 import torch as pt
 import pandas as pd
 import numpy as np
+from pathlib import Path
 
 class GDELTDataset(pt.utils.data.Dataset):
-    def __init__(self, csv_location, lookback = 10, horizon = 1, step = 1):
+    def __init__(self, csv_location = "gdelt.csv", lookback = 10, horizon = 1, step = 1):
         # Read data
-        table = pd.read_csv(csv_location, index_col=0)
+        directory = Path(__file__).parent.resolve()
+        table = pd.read_csv(directory / csv_location, index_col=0)
         self.weeks = table.index.to_numpy()
         self.columns = list(table.columns)
         self.data = pt.tensor(table.reset_index(drop=True).to_numpy(dtype="float32"), dtype=pt.float32)
