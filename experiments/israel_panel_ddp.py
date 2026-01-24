@@ -95,9 +95,6 @@ def train():
     valid_history = np.zeros(epochs)
 
     tqdm_iter = None
-    if rank == 0:
-        tqdm_iter = tqdm.tqdm(total=epochs, file=sys.stdout)
-        tqdm_iter.refresh()
 
     for epoch in range(epochs):
         # Init samplers
@@ -121,8 +118,6 @@ def train():
                     "static_feats_numeric": static,
                 }
 
-                if (epoch == 0) and (rank == 0):
-                    print("Valid Batch")
                 with pt.autocast("cuda"):
                     stuff = model.forward(batch)
                     pred = stuff["predicted_quantiles"]
@@ -130,11 +125,9 @@ def train():
         model.join()
         valid_history[epoch] = valid_loss
         if rank == 0:
-            if epoch == 0:
-                print("Starting training")
-            tqdm_iter.set_postfix_str(f"{valid_loss=}")
-            tqdm_iter.refresh()
-        
+            print(f"{epoch=}, {valid_loss=}", flush=True)
+            tqdm_iter = tqdm.tqdm(total=len(train_dataloader))
+
         model.train()
         for X, y, static in train_dataloader:
             X = X.to(device, non_blocking=True)
@@ -155,6 +148,8 @@ def train():
             scaler.scale(loss).backward()
             scaler.step(optimizer)
             scaler.update()
+            if rank == 0:
+                tqdm_iter.update(1)
             
         if epoch % 100 == 0:
             scheduler.step()
@@ -170,8 +165,7 @@ def train():
             }, f"checkpoints/TFT_{epoch}.pt")
 
         if rank == 0:
-            tqdm_iter.update(1)
-            tqdm_iter.refresh()
+            sys.stdout.flush()
 
     cleanup()
 
