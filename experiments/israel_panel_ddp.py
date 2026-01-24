@@ -92,7 +92,9 @@ def train():
 
     valid_history = np.zeros(epochs)
 
-    # tqdm_iter = tqdm.tqdm(range(epochs))
+    tqdm_iter = None
+    if rank == 0:
+        tqdm_iter = tqdm.tqdm(range(epochs))
 
     for epoch in range(epochs):
         # Init samplers
@@ -102,7 +104,6 @@ def train():
         # Calculate validation loss
         model.eval()
         valid_loss = 0
-        print(f"Valid start {rank}")
         with pt.no_grad():
             for X, y, static in valid_dataloader:
                 X = X.to(device, non_blocking=True)
@@ -121,10 +122,8 @@ def train():
         model.join()
         valid_history[epoch] = valid_loss
         if rank == 0:
-            print(f"Valid loss: {valid_loss}")
-        # tqdm_iter.set_postfix_str(f"{valid_loss=}")
+            tqdm_iter.set_postfix_str(f"{valid_loss=}")
         
-        print(f"Training start {rank}")
         model.train()
         for X, y, static in train_dataloader:
             X = X.to(device, non_blocking=True)
@@ -149,16 +148,20 @@ def train():
         if epoch % 100 == 0:
             scheduler.step()
 
-    cleanup()
+        if rank == 0 and (epoch % 10 == 0):
+            pt.save({
+                "epoch": epoch,
+                "model_state_dict": model.state_dict(),
+                "optimizer_state_dict": optimizer.state_dict(),
+                "scheduler_state_dict": scheduler.state_dict(),
+                "valid_loss": valid_loss,
+                "valid_history": pt.tensor(valid_history),
+            }, f"checkpoints/TFT_{epoch}.pt")
 
-# pt.save({
-#     "epoch": 3000,
-#     "model_state_dict": model.state_dict(),
-#     "optimizer_state_dict": optimizer.state_dict(),
-#     "scheduler_state_dict": scheduler.state_dict(),
-#     "valid_loss": valid_loss,
-#     "valid_history": pt.tensor(valid_history),
-# }, "checkpoints/TFT_3000.pt")
+        if rank == 0:
+            tqdm_iter.update(1)
+
+    cleanup()
 
 def setup():
     # We want to be able to train our model on an `accelerator <https://pytorch.org/docs/stable/torch.html#accelerators>`__
