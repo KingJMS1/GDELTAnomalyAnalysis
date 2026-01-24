@@ -19,9 +19,11 @@ train_data = pt.utils.data.Subset(dataset, range(train_len))
 valid_data = pt.utils.data.Subset(dataset, range(train_len, train_len + valid_len))
 test_data = pt.utils.data.Subset(dataset, range(train_len + valid_len, data_len))
 
-train_dataloader = pt.utils.data.DataLoader(dataset, batch_size=1024 * 16, shuffle=True, num_workers=3, pin_memory=True, prefetch_factor=4, persistent_workers=True)
-valid_dataloader = pt.utils.data.DataLoader(dataset, batch_size=1024 * 16, shuffle=False, num_workers=2, pin_memory=True, persistent_workers=True)
-test_dataloader = pt.utils.data.DataLoader(dataset, batch_size=1024 * 16, shuffle=False, num_workers=2, pin_memory=True)
+train_dataloader = pt.utils.data.DataLoader(train_data, batch_size=1024 * 16, shuffle=True, num_workers=3, pin_memory=True, prefetch_factor=4, persistent_workers=True)
+valid_dataloader = pt.utils.data.DataLoader(valid_data, batch_size=1024 * 16, shuffle=False, num_workers=2, pin_memory=True, persistent_workers=True)
+test_dataloader = pt.utils.data.DataLoader(test_data, batch_size=1024 * 16, shuffle=False, num_workers=2, pin_memory=True)
+
+scaler = pt.amp.GradScaler()
 
 def quantile_loss(y_pred, y_true, q):
     """
@@ -73,7 +75,7 @@ configuration = {
 
 epochs = 3000
 
-model = tft.TemporalFusionTransformer(OmegaConf.create(configuration)).to(device).to(pt.float16)
+model = tft.TemporalFusionTransformer(OmegaConf.create(configuration)).to(device)
 optimizer = pt.optim.Adam(model.parameters(), lr=4e-5)
 scheduler = pt.optim.lr_scheduler.ExponentialLR(optimizer, 0.97)
 
@@ -100,9 +102,10 @@ for epoch in tqdm_iter:
                 "static_feats_numeric": static,
             }
 
-            stuff = model.forward(batch)
-            pred = stuff["predicted_quantiles"]
-            valid_loss += lossfn(pred.squeeze(), pt.log(y + 1))
+            with pt.autocast("cuda"):
+                stuff = model.forward(batch)
+                pred = stuff["predicted_quantiles"]
+                valid_loss += lossfn(pred.squeeze(), pt.log(y + 1))
     valid_history[epoch] = valid_loss
     tqdm_iter.set_postfix_str(f"{valid_loss=}")
     
@@ -116,13 +119,16 @@ for epoch in tqdm_iter:
             "static_feats_numeric": static,
         }
         
-        stuff = model.forward(batch)
-        pred = stuff["predicted_quantiles"]
-        loss = lossfn(pred.squeeze(), pt.log(y + 1))
+        loss = None
+        with pt.autocast("cuda"):
+            stuff = model.forward(batch)
+            pred = stuff["predicted_quantiles"]
+            loss = lossfn(pred.squeeze(), pt.log(y + 1))
 
         optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+        scaler.scale(loss).backward()
+        scaler.step(optimizer)
+        scaler.update()
         
     if epoch % 100 == 0:
         scheduler.step()
