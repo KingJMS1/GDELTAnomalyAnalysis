@@ -19,9 +19,9 @@ train_data = pt.utils.data.Subset(dataset, range(train_len))
 valid_data = pt.utils.data.Subset(dataset, range(train_len, train_len + valid_len))
 test_data = pt.utils.data.Subset(dataset, range(train_len + valid_len, data_len))
 
-train_dataloader = pt.utils.data.DataLoader(train_data, batch_size=1024 * 16, shuffle=True, num_workers=3, pin_memory=True, prefetch_factor=4, persistent_workers=True)
-valid_dataloader = pt.utils.data.DataLoader(valid_data, batch_size=1024 * 16, shuffle=False, num_workers=2, pin_memory=True, persistent_workers=True)
-test_dataloader = pt.utils.data.DataLoader(test_data, batch_size=1024 * 16, shuffle=False, num_workers=2, pin_memory=True)
+train_dataloader = pt.utils.data.DataLoader(train_data, batch_size=1024 * 8, shuffle=True, num_workers=3, pin_memory=True, prefetch_factor=4, persistent_workers=True)
+valid_dataloader = pt.utils.data.DataLoader(valid_data, batch_size=1024 * 8, shuffle=False, num_workers=2, pin_memory=True, persistent_workers=True)
+test_dataloader = pt.utils.data.DataLoader(test_data, batch_size=1024 * 8, shuffle=False, num_workers=2, pin_memory=True)
 
 scaler = pt.amp.GradScaler()
 
