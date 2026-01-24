@@ -6,7 +6,7 @@ from omegaconf import OmegaConf
 from GDELTAnomalies.datasets.gdelt_pt_dataset import GDELTDataset
 import GDELTAnomalies.models.tft as tft
 
-pt.accelerator.current_accelerator()
+print(pt.accelerator.current_accelerator())
 
 dataset = GDELTDataset(lookback=10, horizon=1, step=1, flatten=True)
 
