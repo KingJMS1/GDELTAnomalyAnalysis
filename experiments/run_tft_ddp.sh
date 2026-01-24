@@ -5,6 +5,7 @@
 #SBATCH --cpus-per-task=5
 #SBATCH --gres=gpu:1
 #SBATCH --time=24:00:00
+#SBATCH --constraint=h100
 #SBATCH --output=output_%j.log
 #SBATCH --error=error_%j.log
 
