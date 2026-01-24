@@ -1,8 +1,8 @@
 #!/bin/bash
-#SBATCH --job-name=small_deep20
-#SBATCH --output=small_deep20_%j.txt    
+#SBATCH --job-name=tft
+#SBATCH --output=tft_%j.txt    
 #SBATCH --ntasks=1                        # number of processes to be run
-#SBATCH --cpus-per-task=8
+#SBATCH --cpus-per-task=10
 #SBATCH --mem=64G
 #SBATCH --gpus-per-node=1                 # every node wants one GPU
 #SBATCH --constraint=h100                 # get h100s
