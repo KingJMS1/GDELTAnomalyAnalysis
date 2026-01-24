@@ -678,7 +678,7 @@ class InterpretableMultiHeadAttention(nn.Module):
         if mask is not None:
             # the mask is broadcast along the batch(dim=0) and heads(dim=1) dimensions,
             # where the mask==True, the scores are "cancelled" by setting a very small value
-            attention_scores = attention_scores.masked_fill(mask, -1e9)
+            attention_scores = attention_scores.masked_fill(mask, torch.finfo(attention_scores.dtype).min)
 
         # still part of the scaled dot-product attention (dimensions are kept)
         attention_scores = F.softmax(attention_scores, dim=-1)
