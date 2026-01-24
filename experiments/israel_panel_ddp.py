@@ -6,6 +6,8 @@ from omegaconf import OmegaConf
 from GDELTAnomalies.datasets.gdelt_pt_dataset import GDELTDataset
 import GDELTAnomalies.models.tft as tft
 
+import sys
+
 def load_dataset(rank, world_size):
     dataset = GDELTDataset(lookback=10, horizon=1, step=1, flatten=True, dtype=pt.float16)
 
@@ -94,12 +96,16 @@ def train():
 
     tqdm_iter = None
     if rank == 0:
-        tqdm_iter = tqdm.tqdm(range(epochs))
+        tqdm_iter = tqdm.tqdm(total=epochs, file=sys.stdout)
+        tqdm_iter.refresh()
 
     for epoch in range(epochs):
         # Init samplers
         train_sampler.set_epoch(epoch)
         valid_sampler.set_epoch(epoch)
+
+        if (epoch == 0) and (rank == 0):
+            print("Starting validation")
 
         # Calculate validation loss
         model.eval()
@@ -115,6 +121,8 @@ def train():
                     "static_feats_numeric": static,
                 }
 
+                if (epoch == 0) and (rank == 0):
+                    print("Valid Batch")
                 with pt.autocast("cuda"):
                     stuff = model.forward(batch)
                     pred = stuff["predicted_quantiles"]
@@ -122,7 +130,10 @@ def train():
         model.join()
         valid_history[epoch] = valid_loss
         if rank == 0:
+            if epoch == 0:
+                print("Starting training")
             tqdm_iter.set_postfix_str(f"{valid_loss=}")
+            tqdm_iter.refresh()
         
         model.train()
         for X, y, static in train_dataloader:
@@ -160,6 +171,7 @@ def train():
 
         if rank == 0:
             tqdm_iter.update(1)
+            tqdm_iter.refresh()
 
     cleanup()
 
