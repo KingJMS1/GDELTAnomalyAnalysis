@@ -9,8 +9,10 @@
 #SBATCH --error=error_%j.log
 
 # Load necessary modules (adjust paths as needed)
+echo "Loading"
 module load anaconda
 conda activate pyproj
+echo "Load complete"
 
 # Set environment variables for rendezvous
 export MASTER_ADDR=$(scontrol show hostname $SLURM_NODELIST | head -n 1)
@@ -19,7 +21,7 @@ export NCCL_SOCKET_IFNAME=ib0
 
 # Run the training script with torchrun
 srun torchrun \
-    --nnodes=$SLURM_NODES \
+    --nnodes=$SLURM_NNODES \
     --nproc_per_node=$SLURM_NTASKS_PER_NODE \
     --rdzv_id=$SLURM_JOB_ID \
     --rdzv_backend=c10d \
