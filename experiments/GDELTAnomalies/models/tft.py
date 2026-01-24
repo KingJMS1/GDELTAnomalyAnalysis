@@ -729,11 +729,15 @@ class TemporalFusionTransformer(nn.Module):
         self.num_future_numeric = data_props.get('num_future_numeric', 0)
         self.num_future_categorical = data_props.get('num_future_categorical', 0)
         self.future_categorical_cardinalities = data_props.get('future_categorical_cardinalities', [])
+        
+        self.num_future_steps = data_props.get("num_future_steps", 1)
 
         self.historical_ts_representative_key = 'historical_ts_numeric' if self.num_historical_numeric > 0 \
             else 'historical_ts_categorical'
         self.future_ts_representative_key = 'future_ts_numeric' if self.num_future_numeric > 0 \
             else 'future_ts_categorical'
+
+        self.device = data_props["device"]
 
         # ============
         # model props
@@ -769,17 +773,23 @@ class TemporalFusionTransformer(nn.Module):
             categorical_cardinalities=self.historical_categorical_cardinalities,
             time_distribute=True)
 
-        self.future_ts_transform = InputChannelEmbedding(
-            state_size=self.state_size,
-            num_numeric=self.num_future_numeric,
-            num_categorical=self.num_future_categorical,
-            categorical_cardinalities=self.future_categorical_cardinalities,
-            time_distribute=True)
+
+        if self.num_future_numeric + self.num_future_categorical == 0:
+            self.use_future = False
+            self.future_ts_transform = None
+
+        else:
+            self.future_ts_transform = InputChannelEmbedding(
+                state_size=self.state_size,
+                num_numeric=self.num_future_numeric,
+                num_categorical=self.num_future_categorical,
+                categorical_cardinalities=self.future_categorical_cardinalities,
+                time_distribute=True)
 
         # =============================
         # Variable Selection Networks
         # =============================
-        # %%%%%%%%%% Static %%%%%%%%%%%
+        # ==== Static ====
         self.static_selection = VariableSelectionNetwork(
             input_dim=self.state_size,
             num_inputs=self.num_static_numeric + self.num_static_categorical,
@@ -792,12 +802,15 @@ class TemporalFusionTransformer(nn.Module):
             dropout=self.dropout,
             context_dim=self.state_size)
 
-        self.future_ts_selection = VariableSelectionNetwork(
-            input_dim=self.state_size,
-            num_inputs=self.num_future_numeric + self.num_future_categorical,
-            hidden_dim=self.state_size,
-            dropout=self.dropout,
-            context_dim=self.state_size)
+        if self.use_future:
+            self.future_ts_selection = VariableSelectionNetwork(
+                input_dim=self.state_size,
+                num_inputs=self.num_future_numeric + self.num_future_categorical,
+                hidden_dim=self.state_size,
+                dropout=self.dropout,
+                context_dim=self.state_size)
+        else:
+            self.future_ts_selection = None
 
         # =============================
         # static covariate encoders
@@ -940,8 +953,12 @@ class TemporalFusionTransformer(nn.Module):
         historical_ts_rep = self.historical_ts_transform(x_numeric=batch.get('historical_ts_numeric', empty_tensor),
                                                          x_categorical=batch.get('historical_ts_categorical',
                                                                                  empty_tensor))
-        future_ts_rep = self.future_ts_transform(x_numeric=batch.get('future_ts_numeric', empty_tensor),
-                                                 x_categorical=batch.get('future_ts_categorical', empty_tensor))
+        
+        future_ts_rep = None
+        if self.use_future:
+            future_ts_rep = self.future_ts_transform(x_numeric=batch.get('future_ts_numeric', empty_tensor),
+                                                    x_categorical=batch.get('future_ts_categorical', empty_tensor))
+        
         return future_ts_rep, historical_ts_rep, static_rep
 
     def get_static_encoders(self, selected_static: torch.tensor) -> Tuple[torch.tensor, ...]:
@@ -977,7 +994,13 @@ class TemporalFusionTransformer(nn.Module):
 
         # concatenate the historical (observed) temporal signal with the futuristic (known) temporal singal, along the
         # time dimension
-        lstm_input = torch.cat([selected_historical, selected_future], dim=1)
+        lstm_input = selected_historical
+        dummies = None 
+        if self.use_future:
+            lstm_input = torch.cat([selected_historical, selected_future], dim=1)
+        else:
+            dummies = torch.zeros((selected_historical.shape[0], self.num_future_steps, self.state_size), device=self.device)
+            lstm_input = torch.cat([selected_historical, dummies], dim=1)
 
         # the historical temporal signal is fed into the first recurrent module
         # using the static metadata as initial hidden and cell state
@@ -989,7 +1012,11 @@ class TemporalFusionTransformer(nn.Module):
         # the future (known) temporal signal is fed into the second recurrent module
         # using the latest (hidden,cell) state of the first recurrent module
         # for setting the initial (hidden,cell) state.
-        future_lstm_output, _ = self.future_lstm(selected_future, hidden)
+        future_lstm_output = None
+        if self.use_future:
+            future_lstm_output, _ = self.future_lstm(selected_future, hidden)
+        else:
+            future_lstm_output, _ = self.future_lstm(dummies, hidden)
 
         # concatenate the historical recurrent output with the futuristic recurrent output, along the time dimension
         lstm_output = torch.cat([past_lstm_output, future_lstm_output], dim=1)
@@ -1071,7 +1098,10 @@ class TemporalFusionTransformer(nn.Module):
     def forward(self, batch):
         # infer batch structure
         num_samples, num_historical_steps, _ = batch[self.historical_ts_representative_key].shape
-        num_future_steps = batch[self.future_ts_representative_key].shape[1]
+        num_future_steps = self.num_future_steps
+        if self.use_future:
+            num_future_steps = batch[self.future_ts_representative_key].shape[1]
+
         # define output_sequence_length : num_future_steps - self.target_window_start_idx
 
         # =========== Transform all input channels ==============
@@ -1101,10 +1131,12 @@ class TemporalFusionTransformer(nn.Module):
         # historical_selection_weights: [num_samples x num_historical_steps x total_num_historical_inputs]
 
         # =========== Future variables selection ==============
-        selected_future, future_selection_weights = self.apply_temporal_selection(
-            temporal_representation=future_ts_rep,
-            static_selection_signal=c_selection,
-            temporal_selection_module=self.future_ts_selection)
+        selected_future, future_selection_weights = (None, None)
+        if self.use_future:
+            selected_future, future_selection_weights = self.apply_temporal_selection(
+                temporal_representation=future_ts_rep,
+                static_selection_signal=c_selection,
+                temporal_selection_module=self.future_ts_selection)
         # Dimensions:
         # selected_future: [num_samples x num_future_steps x state_size]
         # future_selection_weights: [num_samples x num_future_steps x total_num_future_inputs]
