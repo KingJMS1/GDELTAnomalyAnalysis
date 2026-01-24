@@ -999,7 +999,7 @@ class TemporalFusionTransformer(nn.Module):
         if self.use_future:
             lstm_input = torch.cat([selected_historical, selected_future], dim=1)
         else:
-            dummies = torch.zeros((selected_historical.shape[0], self.num_future_steps, self.state_size), device=self.device)
+            dummies = torch.zeros((selected_historical.shape[0], self.num_future_steps, self.state_size), device=self.device, dtype=next(self.parameters()).dtype)
             lstm_input = torch.cat([selected_historical, dummies], dim=1)
 
         # the historical temporal signal is fed into the first recurrent module

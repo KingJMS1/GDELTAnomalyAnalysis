@@ -17,7 +17,7 @@ class GDELTDataset(pt.utils.data.Dataset):
     If flatten = True, dataset columns are flattened such that the format for y is now:
     Week 1 Series 1, Week 1 Series 2, ..., Week 2 Series 1, Week 2 Series 2, ...
     """
-    def __init__(self, csv_location = "gdelt.csv", lookback = 10, horizon = 1, step = 1, flatten = False):
+    def __init__(self, csv_location = "gdelt.csv", lookback = 10, horizon = 1, step = 1, flatten = False, dtype=pt.float32):
         # Read data
         directory = Path(__file__).parent.resolve()
         table = pd.read_csv(directory / csv_location, index_col=0)
@@ -48,6 +48,7 @@ class GDELTDataset(pt.utils.data.Dataset):
         self.step = step
         self.num_series = self.event.shape[0]
         self.flatten = flatten
+        self.dtype = dtype
 
         # Calculate data partitions
         self.ts_partitions = pt.arange(self.data.shape[0]).unfold(0, lookback + horizon, step)
@@ -80,7 +81,7 @@ class GDELTDataset(pt.utils.data.Dataset):
             event = self.event[series]
             statics = pt.concat((pt.tensor([lonSin, lonCos, latSin, latCos]), country, event))
 
-            return X, y, statics
+            return X.to(self.dtype), y.to(self.dtype), statics.to(self.dtype)
         else:
             # Get indices for this partition
             idxs = self.ts_partitions[index]
@@ -90,7 +91,7 @@ class GDELTDataset(pt.utils.data.Dataset):
             X = data[:-1]
             y = data[-1]
             
-            return X, y
+            return X.to(self.dtype), y.to(self.dtype)
 
 if __name__ == "__main__":
     data = GDELTDataset()

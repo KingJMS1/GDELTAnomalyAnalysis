@@ -8,7 +8,7 @@ import GDELTAnomalies.models.tft as tft
 
 print(pt.accelerator.current_accelerator())
 
-dataset = GDELTDataset(lookback=10, horizon=1, step=1, flatten=True)
+dataset = GDELTDataset(lookback=10, horizon=1, step=1, flatten=True, dtype=pt.float16)
 
 data_len = len(dataset)
 train_len = 308 * dataset.num_series
@@ -19,9 +19,9 @@ train_data = pt.utils.data.Subset(dataset, range(train_len))
 valid_data = pt.utils.data.Subset(dataset, range(train_len, train_len + valid_len))
 test_data = pt.utils.data.Subset(dataset, range(train_len + valid_len, data_len))
 
-train_dataloader = pt.utils.data.DataLoader(dataset, batch_size=32, shuffle=True, num_workers=3, pin_memory=True, prefetch_factor=4, persistent_workers=True)
-valid_dataloader = pt.utils.data.DataLoader(dataset, batch_size=32, shuffle=False, num_workers=2, pin_memory=True, persistent_workers=True)
-test_dataloader = pt.utils.data.DataLoader(dataset, batch_size=32, shuffle=False, num_workers=2, pin_memory=True)
+train_dataloader = pt.utils.data.DataLoader(dataset, batch_size=1024 * 16, shuffle=True, num_workers=3, pin_memory=True, prefetch_factor=4, persistent_workers=True)
+valid_dataloader = pt.utils.data.DataLoader(dataset, batch_size=1024 * 16, shuffle=False, num_workers=2, pin_memory=True, persistent_workers=True)
+test_dataloader = pt.utils.data.DataLoader(dataset, batch_size=1024 * 16, shuffle=False, num_workers=2, pin_memory=True)
 
 def quantile_loss(y_pred, y_true, q):
     """
@@ -73,7 +73,7 @@ configuration = {
 
 epochs = 3000
 
-model = tft.TemporalFusionTransformer(OmegaConf.create(configuration)).to(device)
+model = tft.TemporalFusionTransformer(OmegaConf.create(configuration)).to(device).to(pt.float16)
 optimizer = pt.optim.Adam(model.parameters(), lr=4e-5)
 scheduler = pt.optim.lr_scheduler.ExponentialLR(optimizer, 0.97)
 
