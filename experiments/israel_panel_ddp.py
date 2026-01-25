@@ -214,6 +214,8 @@ def predict():
     model.load_state_dict(checkpoint["model_state_dict"])
 
     predictions = {"validation": [], "validation_indices": [], "test": [], "test_indices": []}
+    
+    model.eval()
 
     with pt.no_grad():
         if rank == 0:
