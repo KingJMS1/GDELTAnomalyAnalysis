@@ -8,27 +8,34 @@ import GDELTAnomalies.models.tft as tft
 
 import sys
 
-def load_dataset(rank, world_size):
+def load_dataset(rank, world_size, test = False):
     dataset = GDELTDataset(lookback=10, horizon=1, step=1, flatten=True, dtype=pt.float16)
 
     data_len = len(dataset)
     train_len = 308 * dataset.num_series
     valid_len = 52 * dataset.num_series
 
+    test_data = None
+    test_sampler = None
+    test_dataloader = None
 
     train_data = pt.utils.data.Subset(dataset, range(train_len))
     valid_data = pt.utils.data.Subset(dataset, range(train_len, train_len + valid_len))
-    # test_data = pt.utils.data.Subset(dataset, range(train_len + valid_len, data_len))
+    if test:
+        test_data = pt.utils.data.Subset(dataset, range(train_len + valid_len, data_len))
 
     train_sampler = pt.utils.data.DistributedSampler(train_data, world_size, rank, True)
     valid_sampler = pt.utils.data.DistributedSampler(valid_data, world_size, rank, False)
-
+    if test:
+        test_sampler = pt.utils.data.DistributedSampler(test_data, world_size, rank, False)
 
     train_dataloader = pt.utils.data.DataLoader(train_data, batch_size=1024 * 4, sampler=train_sampler, num_workers=3, pin_memory=True, prefetch_factor=4, persistent_workers=True)
     valid_dataloader = pt.utils.data.DataLoader(valid_data, batch_size=1024 * 4, sampler=valid_sampler, num_workers=2, pin_memory=True, persistent_workers=True)
-    # test_dataloader = pt.utils.data.DataLoader(test_data, batch_size=1024 * 8, shuffle=False, num_workers=2, pin_memory=True)
+    if test:
+        test_dataloader = pt.utils.data.DataLoader(test_data, batch_size=1024 * 4, sampler=test_sampler, num_workers=2, pin_memory=True, persistent_workers=True)    
     
-    
+    if test:
+        return train_dataloader, valid_dataloader, test_dataloader, train_sampler, valid_sampler, test_sampler
     return train_dataloader, valid_dataloader, train_sampler, valid_sampler
 
 def quantile_loss(y_pred, y_true, q):
@@ -164,10 +171,96 @@ def train():
                 "valid_history": pt.tensor(valid_history),
             }, f"checkpoints/TFT_{epoch}.pt")
 
-        if rank == 0:
-            sys.stdout.flush()
 
     cleanup()
+
+def predict():
+    rank, world_size = setup()
+    
+    train_dataloader, valid_dataloader, test_dataloader, train_sampler, valid_sampler, test_sampler = load_dataset(rank, world_size, test=True)
+
+    device = pt.device("cuda")
+    pt.manual_seed(854923)
+
+    data_props = {
+        'num_historical_numeric': 4200,
+        'num_historical_categorical': 0,
+        'num_static_numeric': 26,
+        'num_static_categorical': 0,
+        'num_future_numeric': 0,
+        'num_future_categorical': 0,
+        "num_future_steps": 1,
+        "device": "cuda"
+    }
+
+    configuration = {
+        'model': {
+                'dropout': 0.05,
+                'state_size': 4,
+                'output_quantiles': [0.5],
+                'lstm_layers': 2,
+                'attention_heads': 2
+        },
+        # these arguments are related to possible extensions of the model class
+        'task_type': 'regression',
+        'target_window_start': None,
+        'data_props': data_props
+    }
+
+    # Load our model
+    checkpoint = pt.load("checkpoints/TFT_120_hdim=4_full.pt")
+    tft_model = tft.TemporalFusionTransformer(OmegaConf.create(configuration)).to(device)
+    model = pt.nn.parallel.DistributedDataParallel(tft_model,)
+    model.load_state_dict(checkpoint["model_state_dict"])
+
+    predictions = {"validation": [], "validation_indices": pt.tensor(list(valid_sampler)), "test": [], "test_indices": pt.tensor(list(valid_dataloader))}
+
+    with pt.no_grad():
+        if rank == 0:
+            print("Validation")
+        
+        i = 0
+        for X, y, static in valid_dataloader:
+            if rank == 0:
+                print(f"VBatch {i}")
+                i += 1
+            X = X.to(device, non_blocking=True)
+            y = y.to(device, non_blocking=True)
+            static = static.to(device, non_blocking=True)
+
+            batch = {
+                "historical_ts_numeric": X,
+                "static_feats_numeric": static,
+            }
+
+            with pt.autocast("cuda"):
+                stuff = model.forward(batch)
+                predictions["validation"].append(stuff["predicted_quantiles"].detach().cpu())
+
+        if rank == 0:
+            print("Test")
+            i = 0
+
+        for X, y, static in test_dataloader:
+            if rank == 0:
+                print(f"TBatch {i}")
+                i += 1
+            X = X.to(device, non_blocking=True)
+            y = y.to(device, non_blocking=True)
+            static = static.to(device, non_blocking=True)
+
+            batch = {
+                "historical_ts_numeric": X,
+                "static_feats_numeric": static,
+            }
+
+            with pt.autocast("cuda"):
+                stuff = model.forward(batch)
+                predictions["test"].append(stuff["predicted_quantiles"].detach().cpu())
+
+    pt.save(predictions, f"checkpoints/TFT_full_preds_{rank}.pt")
+
+        
 
 def setup():
     # We want to be able to train our model on an `accelerator <https://pytorch.org/docs/stable/torch.html#accelerators>`__
@@ -183,4 +276,4 @@ def cleanup():
     pt.distributed.destroy_process_group()
 
 if __name__ == "__main__":
-    train()
+    predict()
