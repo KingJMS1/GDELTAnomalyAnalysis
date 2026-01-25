@@ -9,7 +9,7 @@ import GDELTAnomalies.models.tft as tft
 import sys
 
 def load_dataset(rank, world_size, test = False):
-    dataset = GDELTDataset(lookback=10, horizon=1, step=1, flatten=True, dtype=pt.float16)
+    dataset = GDELTDataset(lookback=10, horizon=1, step=1, flatten=True, dtype=pt.float16, return_index=test)
 
     data_len = len(dataset)
     train_len = 308 * dataset.num_series
@@ -213,14 +213,14 @@ def predict():
     model = pt.nn.parallel.DistributedDataParallel(tft_model,)
     model.load_state_dict(checkpoint["model_state_dict"])
 
-    predictions = {"validation": [], "validation_indices": pt.tensor(list(valid_sampler)), "test": [], "test_indices": pt.tensor(list(valid_dataloader))}
+    predictions = {"validation": [], "validation_indices": [], "test": [], "test_indices": []}
 
     with pt.no_grad():
         if rank == 0:
             print("Validation")
         
         i = 0
-        for X, y, static in valid_dataloader:
+        for X, y, static, series, timeIdx in valid_dataloader:
             if rank == 0:
                 print(f"VBatch {i}")
                 i += 1
@@ -236,12 +236,13 @@ def predict():
             with pt.autocast("cuda"):
                 stuff = model.forward(batch)
                 predictions["validation"].append(stuff["predicted_quantiles"].detach().cpu())
+                predictions["validation_indices"].append((series, timeIdx))
 
         if rank == 0:
             print("Test")
             i = 0
 
-        for X, y, static in test_dataloader:
+        for X, y, static, series, timeIdx in test_dataloader:
             if rank == 0:
                 print(f"TBatch {i}")
                 i += 1
@@ -257,6 +258,7 @@ def predict():
             with pt.autocast("cuda"):
                 stuff = model.forward(batch)
                 predictions["test"].append(stuff["predicted_quantiles"].detach().cpu())
+                predictions["test_indices"].append((series, timeIdx))
 
     pt.save(predictions, f"checkpoints/TFT_full_preds_{rank}.pt")
 
