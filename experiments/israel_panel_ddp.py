@@ -29,10 +29,10 @@ def load_dataset(rank, world_size, test = False):
     if test:
         test_sampler = pt.utils.data.DistributedSampler(test_data, world_size, rank, False)
 
-    train_dataloader = pt.utils.data.DataLoader(train_data, batch_size=1024 * 4, sampler=train_sampler, num_workers=3, pin_memory=True, prefetch_factor=4, persistent_workers=True)
-    valid_dataloader = pt.utils.data.DataLoader(valid_data, batch_size=1024 * 4, sampler=valid_sampler, num_workers=2, pin_memory=True, persistent_workers=True)
+    train_dataloader = pt.utils.data.DataLoader(train_data, batch_size=1024 * 2, sampler=train_sampler, num_workers=3, pin_memory=True, prefetch_factor=4, persistent_workers=True)
+    valid_dataloader = pt.utils.data.DataLoader(valid_data, batch_size=1024 * 2, sampler=valid_sampler, num_workers=2, pin_memory=True, persistent_workers=True)
     if test:
-        test_dataloader = pt.utils.data.DataLoader(test_data, batch_size=1024 * 4, sampler=test_sampler, num_workers=2, pin_memory=True, persistent_workers=True)    
+        test_dataloader = pt.utils.data.DataLoader(test_data, batch_size=1024 * 2, sampler=test_sampler, num_workers=2, pin_memory=True, persistent_workers=True)    
     
     if test:
         return train_dataloader, valid_dataloader, test_dataloader, train_sampler, valid_sampler, test_sampler
@@ -77,10 +77,10 @@ def train():
     configuration = {
         'model': {
                 'dropout': 0.05,
-                'state_size': 4,
+                'state_size': 16,
                 'output_quantiles': [0.5],
                 'lstm_layers': 2,
-                'attention_heads': 2
+                'attention_heads': 3
         },
         # these arguments are related to possible extensions of the model class
         'task_type': 'regression',
@@ -164,12 +164,12 @@ def train():
         if rank == 0 and (epoch % 10 == 0):
             pt.save({
                 "epoch": epoch,
-                "model_state_dict": model.state_dict(),
+                "model_state_dict": model.module.state_dict() if hasattr(model, "module") else model.state_dict(),
                 "optimizer_state_dict": optimizer.state_dict(),
                 "scheduler_state_dict": scheduler.state_dict(),
                 "valid_loss": valid_loss,
                 "valid_history": pt.tensor(valid_history),
-            }, f"checkpoints/TFT_{epoch}.pt")
+            }, f"checkpoints/TFT_hdim_16_{epoch}.pt")
 
 
     cleanup()
@@ -196,7 +196,7 @@ def predict():
     configuration = {
         'model': {
                 'dropout': 0.05,
-                'state_size': 4,
+                'state_size': 8,
                 'output_quantiles': [0.5],
                 'lstm_layers': 2,
                 'attention_heads': 2
@@ -267,10 +267,10 @@ def predict():
         
 
 def setup():
-    # We want to be able to train our model on an `accelerator <https://pytorch.org/docs/stable/torch.html#accelerators>`__
-    # such as CUDA, MPS, MTIA, or XPU.
+    # Get our accelerator backend
     acc = pt.accelerator.current_accelerator()
     backend = pt.distributed.get_default_backend_for_device(acc)
+    
     # initialize the process group
     pt.distributed.init_process_group(backend, device_id=0)
     return pt.distributed.get_rank(), pt.distributed.get_world_size()
@@ -280,4 +280,4 @@ def cleanup():
     pt.distributed.destroy_process_group()
 
 if __name__ == "__main__":
-    predict()
+    train()

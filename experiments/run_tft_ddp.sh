@@ -1,10 +1,10 @@
 #!/bin/bash
 #SBATCH --job-name=tft_ddp
-#SBATCH --nodes=8
+#SBATCH --nodes=16
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=5
 #SBATCH --gres=gpu:1
-#SBATCH --time=24:00:00
+#SBATCH --time=72:00:00
 #SBATCH --constraint=h100
 #SBATCH --output=output_%j.log
 #SBATCH --error=error_%j.log
