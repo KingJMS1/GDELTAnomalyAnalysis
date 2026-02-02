@@ -17,13 +17,18 @@ class GDELTDataset(pt.utils.data.Dataset):
     If flatten = True, dataset columns are flattened such that the format for y is now:
     Week 1 Series 1, Week 1 Series 2, ..., Week 2 Series 1, Week 2 Series 2, ...
     """
-    def __init__(self, csv_location = "gdelt.csv", lookback = 10, horizon = 1, step = 1, flatten = False, dtype=pt.float32, return_index = False):
+    def __init__(self, csv_location = "gdelt.csv", lookback = 10, horizon = 1, step = 1, flatten = False, dtype=pt.float32, return_index = False, event_filter = None):
         # Read data
         directory = Path(__file__).parent.resolve()
         table = pd.read_csv(directory / csv_location, index_col=0)
         self.weeks = table.index.to_numpy()
         self.columns = list(table.columns)
-        self.data = pt.tensor(table.reset_index(drop=True).to_numpy(dtype="float32"), dtype=pt.float32)
+        
+        # If event filter, limit our columns to only the given events
+        if event_filter is not None:
+            self.columns = [x for x in self.columns if x.split("_")[1] in event_filter]
+        
+        self.data = pt.tensor(table.reset_index(drop=True)[self.columns].to_numpy(dtype="float32"), dtype=pt.float32)
 
         # Static variables for this dataset
         self.country, self.event, self.lonAvg, self.latAvg = zip(*[x.split("_") for x in self.columns])
