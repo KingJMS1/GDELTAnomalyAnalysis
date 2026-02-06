@@ -270,6 +270,7 @@ def predict():
 def setup():
     # Get our accelerator backend
     acc = pt.accelerator.current_accelerator()
+    print(acc)
     backend = pt.distributed.get_default_backend_for_device(acc)
     
     # initialize the process group
