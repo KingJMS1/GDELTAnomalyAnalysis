@@ -66,7 +66,7 @@ def train():
     data_props = {
         'num_historical_numeric': dataset.num_series,
         'num_historical_categorical': 0,
-        'num_static_numeric': 26,
+        'num_static_numeric': dataset.num_statics,
         'num_static_categorical': 0,
         'num_future_numeric': 0,
         'num_future_categorical': 0,

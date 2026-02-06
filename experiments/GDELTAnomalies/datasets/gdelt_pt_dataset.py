@@ -55,6 +55,11 @@ class GDELTDataset(pt.utils.data.Dataset):
         self.flatten = flatten
         self.dtype = dtype
         self.return_index = return_index
+        if self.flatten:
+            # 4 for lon/lat, 
+            self.num_statics = 4 + self.country.shape[1] + self.event.shape[1] 
+        else:
+            self.num_statics = 0
 
         # Calculate data partitions
         self.ts_partitions = pt.arange(self.data.shape[0]).unfold(0, lookback + horizon, step)
