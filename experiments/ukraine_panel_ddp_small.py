@@ -274,6 +274,7 @@ def setup():
     backend = pt.distributed.get_default_backend_for_device(acc)
     
     # initialize the process group
+    print(pt.cuda.device_count())
     pt.distributed.init_process_group(backend, device_id=0)
     return pt.distributed.get_rank(), pt.distributed.get_world_size()
     
