@@ -185,7 +185,7 @@ def predict():
     data_props = {
         'num_historical_numeric': dataset.num_series,
         'num_historical_categorical': 0,
-        'num_static_numeric': 26,
+        'num_static_numeric': dataset.num_statics,
         'num_static_categorical': 0,
         'num_future_numeric': 0,
         'num_future_categorical': 0,
@@ -208,8 +208,7 @@ def predict():
     }
 
     # Load our model
-    raise ValueError("Set load point properly")
-    checkpoint = pt.load("checkpoints/TFT_120_hdim=4_full.pt")
+    checkpoint = pt.load("checkpoints/TFT_ukr_small_hdim_16_1290.pt")
     tft_model = tft.TemporalFusionTransformer(OmegaConf.create(configuration)).to(device)
     tft_model.load_state_dict(checkpoint["model_state_dict"])
     model = pt.nn.parallel.DistributedDataParallel(tft_model,)
@@ -283,4 +282,4 @@ def cleanup():
     pt.distributed.destroy_process_group()
 
 if __name__ == "__main__":
-    train()
+    predict()
