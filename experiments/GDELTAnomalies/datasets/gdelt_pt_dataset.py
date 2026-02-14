@@ -31,20 +31,20 @@ class GDELTDataset(pt.utils.data.Dataset):
         self.data = pt.tensor(table.reset_index(drop=True)[self.columns].to_numpy(dtype="float32"), dtype=pt.float32)
 
         # Static variables for this dataset
-        self.country, self.event, self.lonAvg, self.latAvg = zip(*[x.split("_") for x in self.columns])
+        self.countries, self.events, self.lonAvg, self.latAvg = zip(*[x.split("_") for x in self.columns])
         
         # Longitude/Latitude encodings
         self.lonAvg = pt.tensor([int(x) for x in self.lonAvg], dtype=pt.float32)
         self.latAvg = pt.tensor([int(x) for x in self.latAvg], dtype=pt.float32)
         self.lonSin = pt.sin(self.lonAvg * pt.pi / 180)
         self.lonCos = pt.cos(self.lonAvg * pt.pi / 180)
-        self.latSin = pt.sin(self.latAvg * pt.pi / 180)
-        self.latCos = pt.cos(self.lonAvg * pt.pi / 180)
+        self.latSin = pt.sin(self.latAvg * pt.pi / 90)
+        self.latCos = pt.cos(self.latAvg * pt.pi / 90)
 
         # Country/Event encodings
-        self.countryDf = pd.get_dummies(self.country)
+        self.countryDf = pd.get_dummies(self.countries)
         self.country = pt.tensor(self.countryDf.to_numpy(dtype="float32"))
-        self.eventDf = pd.get_dummies(self.event)
+        self.eventDf = pd.get_dummies(self.events)
         self.event = pt.tensor(self.eventDf.to_numpy(dtype="float32"))
 
         # Set parameters in case user wants to check them
