@@ -35,7 +35,7 @@ class GDELTDataset(pt.utils.data.Dataset):
         
         # Longitude/Latitude encodings
         self.lonAvg = pt.tensor([int(x) for x in self.lonAvg], dtype=pt.float32)
-        self.latAvg = pt.tensor([int(x) for x in self.latAvg], dtype=pt.float32)
+        self.latAvg = pt.tensor([int(x) if (int(x) % 10 != 8) else (int(x) - 1) for x in self.latAvg], dtype=pt.float32)
         self.lonSin = pt.sin(self.lonAvg * pt.pi / 180)
         self.lonCos = pt.cos(self.lonAvg * pt.pi / 180)
         self.latSin = pt.sin(self.latAvg * pt.pi / 90)
