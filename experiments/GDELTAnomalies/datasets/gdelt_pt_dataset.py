@@ -17,7 +17,7 @@ class GDELTDataset(pt.utils.data.Dataset):
     If flatten = True, dataset columns are flattened such that the format for y is now:
     Week 1 Series 1, Week 1 Series 2, ..., Week 2 Series 1, Week 2 Series 2, ...
     """
-    def __init__(self, csv_location = "gdelt.csv", lookback = 10, horizon = 1, step = 1, flatten = False, dtype=pt.float32, return_index = False, event_filter = None):
+    def __init__(self, csv_location = "gdelt_fix.csv", lookback = 10, horizon = 1, step = 1, flatten = False, dtype=pt.float32, return_index = False, event_filter = None):
         # Read data
         directory = Path(__file__).parent.resolve()
         table = pd.read_csv(directory / csv_location, index_col=0)
