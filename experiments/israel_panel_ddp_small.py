@@ -169,7 +169,7 @@ def train():
                 "scheduler_state_dict": scheduler.state_dict(),
                 "valid_loss": valid_loss,
                 "valid_history": pt.tensor(valid_history),
-            }, f"checkpoints/TFT_isr_small/TFT_hdim_16_{epoch}.pt")
+            }, f"checkpoints/TFT_isr_small/TFT_hdim_24_{epoch}.pt")
 
 
     cleanup()
@@ -283,4 +283,4 @@ def cleanup():
     pt.distributed.destroy_process_group()
 
 if __name__ == "__main__":
-    predict()
+    train()
