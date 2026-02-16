@@ -208,7 +208,7 @@ def predict():
     }
 
     # Load our model
-    checkpoint = pt.load("checkpoints/TFT_ukr_small_hdim_16_1290.pt")
+    checkpoint = pt.load("checkpoints/TFT_ukr_small_hdim_24_1550.pt")
     tft_model = tft.TemporalFusionTransformer(OmegaConf.create(configuration)).to(device)
     tft_model.load_state_dict(checkpoint["model_state_dict"])
     model = pt.nn.parallel.DistributedDataParallel(tft_model,)
@@ -264,7 +264,7 @@ def predict():
 
     pt.save(predictions, f"checkpoints/TFT_ukr_small_preds_{rank}.pt")
 
-        
+
 
 def setup():
     # Get our accelerator backend
@@ -282,4 +282,4 @@ def cleanup():
     pt.distributed.destroy_process_group()
 
 if __name__ == "__main__":
-    train()
+    predict()
