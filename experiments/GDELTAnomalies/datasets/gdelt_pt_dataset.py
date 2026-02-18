@@ -28,6 +28,7 @@ class GDELTDataset(pt.utils.data.Dataset):
         if event_filter is not None:
             self.columns = [x for x in self.columns if x.split("_")[1] in event_filter]
         
+        self.df = table[self.columns]
         self.data = pt.tensor(table.reset_index(drop=True)[self.columns].to_numpy(dtype="float32"), dtype=pt.float32)
 
         # Static variables for this dataset
