@@ -18,7 +18,7 @@ def run_batch(index, output_dir):
     time_index = pd.to_datetime(df.index)
 
     NUM_WARMUP = 100
-    NUM_SAMPLES = 100   
+    NUM_SAMPLES = 20000   
     column = df.columns[index]
 
     weeks_idx = time_index.isocalendar().week.to_numpy()[2:] 
