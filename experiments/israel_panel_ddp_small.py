@@ -212,9 +212,8 @@ def predict():
     tft_model = tft.TemporalFusionTransformer(OmegaConf.create(configuration)).to(device)
     tft_model.load_state_dict(checkpoint["model_state_dict"])
     model = pt.nn.parallel.DistributedDataParallel(tft_model,)
-    
 
-    predictions = {"validation": [], "validation_indices": [], "test": [], "test_indices": []}
+    predictions = {"train": [], "train_indices": [], "validation": [], "validation_indices": [], "test": [], "test_indices": []}
     
     model.eval()
 
@@ -263,8 +262,25 @@ def predict():
                 predictions["test"].append(stuff["predicted_quantiles"].detach().cpu())
                 predictions["test_indices"].append((series, timeIdx))
 
-    pt.save(predictions, f"checkpoints/TFT_isr_small_preds_{rank}.pt")
+        if rank == 0:
+            print("Training")
 
+        for X, y, static, series, timeIdx in train_dataloader:
+            X = X.to(device, non_blocking=True)
+            y = y.to(device, non_blocking=True)
+            static = static.to(device, non_blocking=True)
+
+            batch = {
+                "historical_ts_numeric": X,
+                "static_feats_numeric": static,
+            }
+
+            with pt.autocast("cuda"):
+                stuff = model.forward(batch)
+                predictions["train"].append(stuff["predicted_quantiles"].detach().cpu())
+                predictions["train_indices"].append((series, timeIdx))
+
+    pt.save(predictions, f"checkpoints/TFT_isr_small_preds_{rank}.pt")
         
 
 def setup():
