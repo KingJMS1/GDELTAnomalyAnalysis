@@ -178,7 +178,7 @@ def predict():
     world_size = 1
     # rank, world_size = setup()
     
-    train_dataloader, valid_dataloader, test_dataloader, train_sampler, valid_sampler, test_sampler, dataset = load_dataset(rank, world_size, test=True)
+    train_dataloader, valid_dataloader, test_dataloader, _, _, _, dataset = load_dataset(rank, world_size, test=True)
 
     device = pt.device("cuda")
     pt.manual_seed(854923)
@@ -215,7 +215,7 @@ def predict():
     # model = pt.nn.parallel.DistributedDataParallel(tft_model,)
     
 
-    predictions = {"validation": [], "validation_indices": [], "test": [], "test_indices": []}
+    predictions = {"train": [], "train_indices": [], "validation": [], "validation_indices": [], "test": [], "test_indices": []}
     
     model.eval()
 
@@ -263,6 +263,21 @@ def predict():
                 stuff = model.forward(batch)
                 predictions["test"].append(stuff["predicted_quantiles"].detach().cpu())
                 predictions["test_indices"].append((series, timeIdx))
+
+        for X, y, static, series, timeIdx in train_dataloader:
+            X = X.to(device, non_blocking=True)
+            y = y.to(device, non_blocking=True)
+            static = static.to(device, non_blocking=True)
+
+            batch = {
+                "historical_ts_numeric": X,
+                "static_feats_numeric": static,
+            }
+
+            with pt.autocast("cuda"):
+                stuff = model.forward(batch)
+                predictions["train"].append(stuff["predicted_quantiles"].detach().cpu())
+                predictions["train_indices"].append((series, timeIdx))
 
     pt.save(predictions, f"checkpoints/TFT_sim/TFT_preds.pt")
 
