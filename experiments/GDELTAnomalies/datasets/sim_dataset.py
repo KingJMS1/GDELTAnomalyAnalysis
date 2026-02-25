@@ -17,16 +17,12 @@ class SimDataset(pt.utils.data.Dataset):
     If flatten = True, dataset columns are flattened such that the format for y is now:
     Week 1 Series 1, Week 1 Series 2, ..., Week 2 Series 1, Week 2 Series 2, ...
     """
-    def __init__(self, csv_location = "simulation_dataset.csv", lookback = 10, horizon = 1, step = 1, flatten = False, dtype=pt.float32, return_index = False, event_filter = None):
+    def __init__(self, csv_location = "simulation_dataset.csv", lookback = 10, horizon = 1, step = 1, flatten = False, dtype=pt.float32, return_index = False):
         # Read data
         directory = Path(__file__).parent.resolve()
         table = pd.read_csv(directory / csv_location)
         self.weeks = table.index.to_numpy()
         self.columns = list(table.columns)
-        
-        # If event filter, limit our columns to only the given events
-        if event_filter is not None:
-            self.columns = [x for x in self.columns if x.split("_")[1] in event_filter]
         
         self.df = table[self.columns]
         self.data = pt.tensor(table.reset_index(drop=True)[self.columns].to_numpy(dtype="float32"), dtype=pt.float32)
@@ -34,15 +30,17 @@ class SimDataset(pt.utils.data.Dataset):
         # Static variables for this dataset
         self.countries = [int(x.split("_")[1]) for x in self.columns]
 
+        # Set num_series to 2 as we have 2 meaningful input series
+        self.num_series = 2
+
         # Country/Event encodings
-        self.countryDf = pd.get_dummies(self.countries)
+        self.countryDf = pd.get_dummies(self.countries[:self.num_series])
         self.country = pt.tensor(self.countryDf.to_numpy(dtype="float32"))
 
         # Set parameters in case user wants to check them
         self.lookback = lookback
         self.horizon = horizon
         self.step = step
-        self.num_series = self.country.shape[0]
         self.flatten = flatten
         self.dtype = dtype
         self.return_index = return_index
@@ -87,7 +85,7 @@ class SimDataset(pt.utils.data.Dataset):
             # Get data for this partition
             data = self.data[idxs]
             X = data[:-1]
-            y = data[-1]
+            y = data[-1][:self.num_series]
             
             if self.return_index:
                 return X.to(self.dtype), y.to(self.dtype), index
@@ -95,5 +93,6 @@ class SimDataset(pt.utils.data.Dataset):
             return X.to(self.dtype), y.to(self.dtype)
 
 if __name__ == "__main__":
-    data = SimDataset()
+    data = SimDataset(flatten=True)
+    print(data.num_statics)
     print(data.df)

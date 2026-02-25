@@ -3,17 +3,17 @@ import numpy as np
 import tqdm
 from omegaconf import OmegaConf
 
-from GDELTAnomalies.datasets.gdelt_pt_dataset import GDELTDataset
+from GDELTAnomalies.datasets.sim_dataset import SimDataset
 import GDELTAnomalies.models.tft as tft
 
 import sys
 
 def load_dataset(rank, world_size, test = False):
-    dataset = GDELTDataset(lookback=10, horizon=1, step=1, flatten=True, dtype=pt.float16, return_index=test, event_filter=["04", "13", "18", "19"])
+    dataset = SimDataset(lookback=10, horizon=1, step=1, flatten=True, dtype=pt.float16, return_index=test)
 
     data_len = len(dataset)
-    train_len = 256 * dataset.num_series
-    valid_len = 52 * dataset.num_series
+    train_len = 900 * dataset.num_series
+    valid_len = 50 * dataset.num_series
 
     test_data = None
     test_sampler = None
@@ -24,19 +24,19 @@ def load_dataset(rank, world_size, test = False):
     if test:
         test_data = pt.utils.data.Subset(dataset, range(train_len + valid_len, data_len))
 
-    train_sampler = pt.utils.data.DistributedSampler(train_data, world_size, rank, True)
-    valid_sampler = pt.utils.data.DistributedSampler(valid_data, world_size, rank, False)
-    if test:
-        test_sampler = pt.utils.data.DistributedSampler(test_data, world_size, rank, False)
+    # train_sampler = pt.utils.data.DistributedSampler(train_data, world_size, rank, True)
+    # valid_sampler = pt.utils.data.DistributedSampler(valid_data, world_size, rank, False)
+    # if test:
+    #     test_sampler = pt.utils.data.DistributedSampler(test_data, world_size, rank, False)
 
-    train_dataloader = pt.utils.data.DataLoader(train_data, batch_size=1024 * 2, sampler=train_sampler, num_workers=3, pin_memory=True, prefetch_factor=4, persistent_workers=True)
-    valid_dataloader = pt.utils.data.DataLoader(valid_data, batch_size=1024 * 2, sampler=valid_sampler, num_workers=2, pin_memory=True, persistent_workers=True)
+    train_dataloader = pt.utils.data.DataLoader(train_data, batch_size=64, num_workers=3, pin_memory=True, prefetch_factor=4, persistent_workers=True)
+    valid_dataloader = pt.utils.data.DataLoader(valid_data, batch_size=64, num_workers=2, pin_memory=True, persistent_workers=True)
     if test:
-        test_dataloader = pt.utils.data.DataLoader(test_data, batch_size=1024 * 2, sampler=test_sampler, num_workers=2, pin_memory=True, persistent_workers=True)    
+        test_dataloader = pt.utils.data.DataLoader(test_data, batch_size=64, num_workers=2, pin_memory=True, persistent_workers=True)    
     
     if test:
-        return train_dataloader, valid_dataloader, test_dataloader, train_sampler, valid_sampler, test_sampler, dataset
-    return train_dataloader, valid_dataloader, train_sampler, valid_sampler, dataset
+        return train_dataloader, valid_dataloader, test_dataloader, None, None, None, dataset
+    return train_dataloader, valid_dataloader, None, None, dataset
 
 def quantile_loss(y_pred, y_true, q):
     """
@@ -55,7 +55,9 @@ def quantile_loss(y_pred, y_true, q):
     return pt.mean(loss)
 
 def train():
-    rank, world_size = setup()
+    # rank, world_size = setup()
+    rank = 0
+    world_size = 1
     
     train_dataloader, valid_dataloader, train_sampler, valid_sampler, dataset = load_dataset(rank, world_size)
 
@@ -88,10 +90,10 @@ def train():
         'data_props': data_props
     }
 
-    epochs = 3000
+    epochs = 10000
 
-    tft_model = tft.TemporalFusionTransformer(OmegaConf.create(configuration)).to(device)
-    model = pt.nn.parallel.DistributedDataParallel(tft_model,)
+    model = tft.TemporalFusionTransformer(OmegaConf.create(configuration)).to(device)
+    # model = pt.nn.parallel.DistributedDataParallel(tft_model,)
     optimizer = pt.optim.Adam(model.parameters(), lr=4e-5)
     scheduler = pt.optim.lr_scheduler.ExponentialLR(optimizer, 0.97)
 
@@ -101,12 +103,12 @@ def train():
 
     valid_history = np.zeros(epochs)
 
-    tqdm_iter = None
+    tqdm_iter = tqdm.tqdm(range(epochs))
 
-    for epoch in range(epochs):
+    for epoch in tqdm_iter:
         # Init samplers
-        train_sampler.set_epoch(epoch)
-        valid_sampler.set_epoch(epoch)
+        # train_sampler.set_epoch(epoch)
+        # valid_sampler.set_epoch(epoch)
 
         if (epoch == 0) and (rank == 0):
             print("Starting validation")
@@ -129,12 +131,11 @@ def train():
                     stuff = model.forward(batch)
                     pred = stuff["predicted_quantiles"]
                     valid_loss += lossfn(pred.squeeze(), pt.log(y + 1))
-        model.join()
+        # model.join()
         valid_history[epoch] = valid_loss
         if rank == 0:
-            print(f"{epoch=}, {valid_loss=}", flush=True)
-            tqdm_iter = tqdm.tqdm(total=len(train_dataloader))
-
+            tqdm_iter.set_postfix({"valid_loss": valid_loss})
+            
         model.train()
         for X, y, static in train_dataloader:
             X = X.to(device, non_blocking=True)
@@ -155,13 +156,11 @@ def train():
             scaler.scale(loss).backward()
             scaler.step(optimizer)
             scaler.update()
-            if rank == 0:
-                tqdm_iter.update(1)
             
-        if epoch % 100 == 0:
+        if epoch % 200 == 0:
             scheduler.step()
 
-        if rank == 0 and (epoch % 10 == 0):
+        if rank == 0 and (epoch % 50 == 0):
             pt.save({
                 "epoch": epoch,
                 "model_state_dict": model.module.state_dict() if hasattr(model, "module") else model.state_dict(),
@@ -169,15 +168,17 @@ def train():
                 "scheduler_state_dict": scheduler.state_dict(),
                 "valid_loss": valid_loss,
                 "valid_history": pt.tensor(valid_history),
-            }, f"checkpoints/TFT_ukr_small/TFT_hdim_24_{epoch}.pt")
+            }, f"checkpoints/TFT_sim/TFT_hdim_24_{epoch}.pt")
 
 
     cleanup()
 
 def predict():
-    rank, world_size = setup()
+    rank = 0
+    world_size = 1
+    # rank, world_size = setup()
     
-    train_dataloader, valid_dataloader, test_dataloader, train_sampler, valid_sampler, test_sampler, dataset = load_dataset(rank, world_size, test=True)
+    train_dataloader, valid_dataloader, test_dataloader, _, _, _, dataset = load_dataset(rank, world_size, test=True)
 
     device = pt.device("cuda")
     pt.manual_seed(854923)
@@ -208,10 +209,11 @@ def predict():
     }
 
     # Load our model
-    checkpoint = pt.load("checkpoints/TFT_ukr_small_hdim_24_1550.pt")
-    tft_model = tft.TemporalFusionTransformer(OmegaConf.create(configuration)).to(device)
-    tft_model.load_state_dict(checkpoint["model_state_dict"])
-    model = pt.nn.parallel.DistributedDataParallel(tft_model,)
+    checkpoint = pt.load("checkpoints/TFT_sim/TFT_hdim_24_500.pt")
+    model = tft.TemporalFusionTransformer(OmegaConf.create(configuration)).to(device)
+    model.load_state_dict(checkpoint["model_state_dict"])
+    # model = pt.nn.parallel.DistributedDataParallel(tft_model,)
+    
 
     predictions = {"train": [], "train_indices": [], "validation": [], "validation_indices": [], "test": [], "test_indices": []}
     
@@ -262,9 +264,6 @@ def predict():
                 predictions["test"].append(stuff["predicted_quantiles"].detach().cpu())
                 predictions["test_indices"].append((series, timeIdx))
 
-        if rank == 0:
-            print("Training")
-
         for X, y, static, series, timeIdx in train_dataloader:
             X = X.to(device, non_blocking=True)
             y = y.to(device, non_blocking=True)
@@ -280,9 +279,9 @@ def predict():
                 predictions["train"].append(stuff["predicted_quantiles"].detach().cpu())
                 predictions["train_indices"].append((series, timeIdx))
 
-    pt.save(predictions, f"checkpoints/TFT_ukr_small_preds_{rank}.pt")
+    pt.save(predictions, f"checkpoints/TFT_sim/TFT_preds.pt")
 
-
+        
 
 def setup():
     # Get our accelerator backend
