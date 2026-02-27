@@ -14,11 +14,11 @@ import tqdm
 
 # This class can also be used standalone if you do not want to freeze to a csv
 class GDELTCountDataCreator(pt.utils.data.Dataset):
-    def __init__(self, countries = None, eventData = None, lookback = 10, lonmin=-10, lonmax = 150, latmin = 20, latmax = 75, startyear = 2015, endyear = 2025):
+    def __init__(self, database_location, countries = None, eventData = None, lookback = 10, lonmin=-10, lonmax = 150, latmin = 20, latmax = 75, startyear = 2015, endyear = 2025):
         super(GDELTCountDataCreator).__init__()
         
         # Setup database connection
-        self.conn = sqlite3.connect("../../gdelt_europe2.db")
+        self.conn = sqlite3.connect(database_location)
         self.cur = self.conn.cursor()
         
         # If we are not initialized with countries or events, initialize from defaults
@@ -174,7 +174,7 @@ class GDELTCountDataCreator(pt.utils.data.Dataset):
         
 
 if __name__ == "__main__":
-    data = GDELTCountDataCreator(
+    data = GDELTCountDataCreator("gdelt_europe2.db",
         ["USA", "RUS", "UKR", "ISR", "TUR", "PSE", "DEU"], 
         # ("EventCode", ["1211", "1212", "0212", "0232", "0234", "0256", "0356", "072", "073", "1012", "1123", "1222", "1224", "1382", "1384", "154", "192", "194"]), 
         ("EventRootCode", ["02", "03", "04", "06", "07", "09", "10", "11", "12", "13", "15", "16", "17", "18", "19"]),
