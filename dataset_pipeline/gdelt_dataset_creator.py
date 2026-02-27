@@ -14,17 +14,15 @@ import tqdm
 
 # This class can also be used standalone if you do not want to freeze to a csv
 class GDELTCountDataCreator(pt.utils.data.Dataset):
-    def __init__(self, countries = None, eventData = None, lookback = 10, lonmin=-5, lonmax = 145, latmin = 22, latmax = 72, startyear = 2015, endyear = 2025):
+    def __init__(self, countries = None, eventData = None, lookback = 10, lonmin=-10, lonmax = 150, latmin = 20, latmax = 75, startyear = 2015, endyear = 2025):
         super(GDELTCountDataCreator).__init__()
         
         # Setup database connection
         self.conn = sqlite3.connect("../../gdelt_europe2.db")
         self.cur = self.conn.cursor()
         
-        # If we are not initialized with  or events, initialize from defaults
-        self.default_countries, self.default_eventData, self.londata, self.latdata = GDELTCountDataCreator.defaults()
-        self.londata = [x for x in self.londata if (x >= lonmin) and (x <= lonmax)]
-        self.latdata = [x for x in self.latdata if (x >= latmin) and (x <= latmax)]
+        # If we are not initialized with countries or events, initialize from defaults
+        self.default_countries, self.default_eventData, self.londata, self.latdata = GDELTCountDataCreator.defaults(lonmin, lonmax, latmin, latmax)
         self.countries = countries
         self.eventcol = None
         self.events = None
@@ -87,11 +85,13 @@ class GDELTCountDataCreator(pt.utils.data.Dataset):
 
 
     @staticmethod
-    def defaults():
+    def defaults(lonmin, lonmax, latmin, latmax):
         countries = ['CHN', 'CUB', 'USA', 'SAU', 'MEX', 'FRA', 'MDV', 'THA', 'TWN', 'IND', 'MAR', 'KOR', 'VNM', 'SAS', 'LAO', 'AFR', 'URY', 'VEN', 'CHE', 'JPN', 'OMN', 'SEN', 'YEM', 'BGD', 'GBR', 'IRN', 'ISR', 'NPL', 'PAK', 'AFG', 'ESP', 'PAN', 'CAN', 'NMR', 'SYC', 'BLZ', 'GTM', 'HND', 'SLV', 'PRT', 'ARE', 'MMR', 'FIN', 'SYR', 'PHL', 'ITA', 'GRC', 'AUS', 'KEN', 'RUS', 'BHR', 'DEU', 'EGY', 'EUR', 'IRQ', 'JOR', 'KWT', 'LBN', 'LBY', 'LKA', 'MYS', 'NZL', 'QAT', 'SGP', 'SOM', 'TUR', 'TZA', 'ARG', 'VAT', 'NOR', 'GHA', 'KHM', 'NLD', 'POL', 'SEA', 'ZMB', 'BHS', 'NAM', 'AUT', 'BEL', 'BRA', 'CMR', 'CZE', 'DNK', 'ECU', 'FJI', 'HKG', 'IDN', 'IRL', 'LUX', 'MCO', 'MHL', 'NGA', 'PLW', 'PSE', 'SDN', 'SWE', 'TON', 'UKR', 'WSM', 'ZAF', 'ALB', 'PER', 'PRK', 'HUN', 'PGS', 'ATG', 'AZE', 'CHL', 'COL', 'CRB', 'CYM', 'DOM', 'DZA', 'ERI', 'GIN', 'HTI', 'JAM', 'LBR', 'LCA', 'SLE', 'SVK', 'TCD', 'TUN', 'UGA', 'UZB', 'DJI', 'MNG', 'NER', 'NIC', 'BRN', 'GMB', 'MAC', 'GRD', 'BMU', 'LTU', 'MOZ', 'PNG', 'GUY', 'WST', 'BTN', 'TTO', 'MLI', 'COD', 'BGR', 'CAF', 'CRI', 'ETH', 'ISL', 'VCT', 'BOL', 'BRB', 'DMA', 'ZWE', 'BWA', 'ASA', 'BLR', 'EST', 'KNA', 'KAZ', 'BEN', 'SRB', 'KGZ', 'ARM', 'AGO', 'MEA', 'TJK', 'CYP', 'LVA', 'MLT', 'CIV', 'MWI', 'SSD', 'MRT', 'COG', 'GNQ', 'HRV', 'MDG', 'RWA', 'MKD', 'VUT', 'MUS', 'TMP', 'SLB', 'TKM', 'CPV', 'GAB', 'WAF', 'BFA', 'CAS', 'SUR', 'MDA', 'TGO', 'BDI', 'PRY', 'LSO', 'LIE', 'GEO', 'SMR', 'AND',]
         eventData = ("EventRootCode", [f"{x:02}" for x in range(1, 21)])
-        lons = list(range(-5, 146, 10))
-        lats = [22, 28, 32, 38, 42, 48, 52, 58, 62, 68, 72]
+        lonPartitions = list(np.lib.stride_tricks.sliding_window_view(np.arange(lonmin, lonmax + 1, 10), 2))
+        latPartitions = list(np.lib.stride_tricks.sliding_window_view(np.arange(latmin, latmax + 1, 5), 2))
+        lons = [round(float(xmin + xmax) / 2) for xmin, xmax in lonPartitions]
+        lats = [round(float(xmin + xmax) / 2) for xmin, xmax in latPartitions]
 
         return countries, eventData, lons, lats
 

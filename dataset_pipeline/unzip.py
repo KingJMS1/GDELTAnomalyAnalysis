@@ -84,25 +84,27 @@ FileFormat = dataset.CsvFileFormat(parse_options = ParseOptions, convert_options
 
 # Function to unzip and process all files within 1 year.
 def unzip(folder):
-    destFolder = folder + "_unzip"
-    os.makedirs(destFolder, exist_ok = True)
+    unzipFolder = folder + "_unzip"
+    destFolder = folder + "_parquet"
     
-    # Setup parquet writer
-    writer = pq.ParquetWriter(f'{destFolder}/{folder}.parquet', schema)
+    os.makedirs(unzipFolder, exist_ok = True)
+    os.makedirs(destFolder, exist_ok = True)
 
     years = [str(x) for x in range(2015, 2027)]
     months = [f"{x:02}" for x in range(1, 13)]
     
-    command = f"parallel --jobs 8 unzip {{}} -d {destFolder} ::: "
+    command = f"parallel --jobs 8 unzip {{}} -d {unzipFolder} ::: "
 
     for year in tqdm.tqdm(years):
         for month in months:
+            # Setup parquet writer
             if not any([x.startswith(year + month) for x in os.listdir(folder)]):
                 continue
+            writer = pq.ParquetWriter(f'{destFolder}/{year}_{month.lstrip("0")}_part-0.parquet', schema)
             try:
                 currYearFiles = folder + "/" + year + month + "*.zip"
                 subprocess.run(command + currYearFiles, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check = True, shell=True)
-                currYearOutput = [destFolder + "/" + x for x in os.listdir(destFolder) if x.startswith(year)]
+                currYearOutput = [unzipFolder + "/" + x for x in os.listdir(unzipFolder) if x.startswith(year)]
                 currYearOutput = [x for x in currYearOutput if os.path.getsize(x) > 0]
                 allData = dataset.FileSystemDataset.from_paths(currYearOutput, schema=schema, format=FileFormat, filesystem = fs.LocalFileSystem())
                 toOut = allData.to_table()
@@ -112,9 +114,8 @@ def unzip(folder):
                 print_exc()
             finally:
                 # Cleanup any leftover csvs
-                subprocess.run(f"rm {destFolder}/*.CSV", shell=True)
-    
-    writer.close()
+                subprocess.run(f"rm {unzipFolder}/*.CSV", shell=True)
+                writer.close()
 
 if __name__ == "__main__":
     folder = "exports"
